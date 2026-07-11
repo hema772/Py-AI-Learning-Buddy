@@ -1,35 +1,33 @@
 import streamlit as st
+import google.generativeai as genai
 
 # =========================================================
-# PAGE CONFIG
+# STEP 1: Configure Gemini API
+# Get your key free from: https://aistudio.google.com/apikey
 # =========================================================
-st.set_page_config(page_title="Py | Python Learning Buddy", page_icon="🐍", layout="centered")
+GEMINI_API_KEY = ""   # <-- put your key here only
+
+genai.configure(api_key=GEMINI_API_KEY)
+model = genai.GenerativeModel("gemini-2.5-flash")
 
 # =========================================================
-# THEME: Blue & Black
+# PAGE CONFIG + BLUE-BLACK THEME
 # =========================================================
+st.set_page_config(page_title="Py - AI Learning Buddy", page_icon="🐍", layout="centered")
+
 st.markdown("""
     <style>
     .stApp { background-color: #0d1b2a; }
-    h1, h2, h3, p, label, span { color: #e8edf2 !important; }
+    h1, h2, h3, label, p { color: #e0e6ed !important; }
     .stButton>button {
         background-color: #1b98e0;
         color: white;
         border-radius: 8px;
-        font-weight: 600;
-        border: none;
-        padding: 0.5rem 1.2rem;
+        font-weight: bold;
     }
-    .stButton>button:hover { background-color: #147bb5; }
-    .stTextInput>div>div>input, .stTextArea textarea {
+    .stTextInput>div>div>input {
         background-color: #1b263b;
         color: white;
-        border-radius: 6px;
-    }
-    .stRadio label { color: #e8edf2 !important; }
-    div[data-testid="stExpander"] {
-        background-color: #14213d;
-        border-radius: 8px;
     }
     </style>
 """, unsafe_allow_html=True)
@@ -37,100 +35,89 @@ st.markdown("""
 # =========================================================
 # HEADER
 # =========================================================
-st.title("🐍 Py — Your Python Learning Buddy")
-st.write("A friendly, patient AI tutor that helps you master **Python Basics** — one concept at a time.")
+st.title("🐍 Py — Your Python Basics Learning Buddy")
+st.caption("AI Learning Buddy Capstone Project")
 
-with st.expander("👤 Meet Py"):
+with st.expander("👤 About Py (AI Persona)"):
     st.write(
-        "Py is a friendly, patient, and encouraging tutor who explains coding "
-        "concepts in simple language, using easy words and real-life examples. "
-        "Py never makes you feel bad for mistakes — only motivated to keep learning."
+        "You are Py, a friendly, patient, and encouraging Python programming "
+        "tutor who explains coding concepts in simple language with fun "
+        "real-life examples. You never make students feel bad for mistakes "
+        "and always motivate them to keep learning."
     )
 
-st.divider()
+# =========================================================
+# TOPIC + ACTIVITY SELECTION
+# =========================================================
+topic = st.text_input("Enter a Python topic (e.g. variables, loops, lists):")
+
+option = st.selectbox(
+    "Choose Activity",
+    [
+        "Explain Concept",
+        "Real-Life Example",
+        "Generate Quiz",
+        "Get Feedback on my Answer",
+        "Ask Anything",
+    ],
+)
+
+user_answer = ""
+question_text = ""
+if option == "Get Feedback on my Answer":
+    question_text = st.text_area("Paste the quiz question here:")
+    user_answer = st.text_input("Your answer:")
 
 # =========================================================
-# CONCEPT EXPLAINER
+# PROMPT TEMPLATES (matches your 5 submitted templates)
 # =========================================================
-st.header("📖 Explain a Concept")
-concept = st.text_input("Enter a Python concept (e.g. variables, loops, lists, functions):")
+PERSONA = "You are Py, a friendly, patient, and encouraging Python tutor."
 
-explanations = {
-    "variables": "A variable is like a labeled box where you store information. "
-                 "Example: `age = 15` — here `age` is a box holding the value 15. "
-                 "You can change what's inside anytime!",
-    "loops": "A loop lets you repeat an action multiple times without rewriting code. "
-             "Example: `for i in range(5): print(i)` prints 0 to 4 automatically — "
-             "like telling someone 'do this 5 times' instead of repeating instructions.",
-    "lists": "A list is like a shopping bag that holds multiple items together. "
-              "Example: `fruits = ['apple', 'banana', 'mango']` — you can add, remove, "
-              "or check items inside it anytime.",
-    "functions": "A function is a reusable block of code that performs a task, like a "
-                 "recipe you can use again and again. Example: `def greet(name): "
-                 "print('Hello', name)` — call `greet('Ravi')` anytime you need it.",
-}
-
-if st.button("Explain ✨"):
-    if concept.strip() == "":
-        st.warning("Please enter a concept first.")
+def build_prompt(option, topic, question_text="", user_answer=""):
+    if option == "Explain Concept":
+        return (f"{PERSONA} Explain {topic} in simple language as if teaching "
+                 f"a 15-year-old student. Use easy words, one clear analogy, "
+                 f"and keep it short and engaging.")
+    elif option == "Real-Life Example":
+        return (f"{PERSONA} Give one clear real-life example of {topic} and "
+                 f"explain how it works in simple terms.")
+    elif option == "Generate Quiz":
+        return (f"{PERSONA} Create 5 multiple-choice questions on {topic}. "
+                 f"Each question should have 4 options (A, B, C, D). After "
+                 f"each question, provide the correct answer and a short "
+                 f"explanation.")
+    elif option == "Get Feedback on my Answer":
+        return (f"{PERSONA} The student answered \"{user_answer}\" for this "
+                 f"question: {question_text}. Give encouraging feedback. If "
+                 f"the answer is wrong, politely explain the correct answer.")
     else:
-        key = concept.strip().lower()
-        if key in explanations:
-            st.success(f"**Py:** {explanations[key]}")
-        else:
-            st.info(f"**Py:** '{concept}' is a great topic to explore! Try starting "
-                    f"with fundamentals like variables, loops, lists, or functions, "
-                    f"and Py will walk you through it step by step.")
+        return f"{PERSONA} {topic}"
 
+# =========================================================
+# GENERATE RESPONSE
+# =========================================================
+if st.button("Generate ✨"):
+    if topic == "" and option != "Get Feedback on my Answer":
+        st.warning("Please enter a topic first.")
+    else:
+        prompt = build_prompt(option, topic, question_text, user_answer)
+        with st.spinner("Py is thinking..."):
+            try:
+                response = model.generate_content(prompt)
+                st.success("Here's what Py says:")
+                st.write(response.text)
+            except Exception as e:
+                st.error(f"Something went wrong: {e}")
+
+# =========================================================
+# REFLECTION SECTION
+# =========================================================
 st.divider()
+st.header("💭 Reflection on AI Limitations")
+st.write(
+    "AI is a great learning aid, but it cannot fully verify understanding, "
+    "provide personalized mentorship, or replace human accountability. It "
+    "works best as a supplement to human teaching, not a replacement."
+)
 
-# =========================================================
-# QUIZ SECTION
-# =========================================================
-st.header("📝 Quick Quiz")
-
-quiz = [
-    {
-        "question": "What symbol is used for comments in Python?",
-        "options": ["//", "#", "/* */", "--"],
-        "answer": "#",
-    },
-    {
-        "question": "Which of these is a valid variable name?",
-        "options": ["2name", "name_2", "name-2", "name 2"],
-        "answer": "name_2",
-    },
-    {
-        "question": "What does print(type(5)) return?",
-        "options": ["<class 'str'>", "<class 'int'>", "<class 'float'>", "<class 'bool'>"],
-        "answer": "<class 'int'>",
-    },
-    {
-        "question": "Which data type holds True/False values?",
-        "options": ["int", "str", "bool", "float"],
-        "answer": "bool",
-    },
-    {
-        "question": "What does len('Python') return?",
-        "options": ["5", "6", "7", "Error"],
-        "answer": "6",
-    },
-]
-
-user_answers = {}
-for idx, q in enumerate(quiz):
-    user_answers[idx] = st.radio(q["question"], q["options"], key=f"q{idx}", index=None)
-
-if st.button("Submit Quiz"):
-    score = sum(1 for idx, q in enumerate(quiz) if user_answers[idx] == q["answer"])
-    st.success(f"You scored {score}/{len(quiz)}! 🎉")
-    for idx, q in enumerate(quiz):
-        if user_answers[idx] != q["answer"]:
-            st.write(f"❌ **{q['question']}** — correct answer: **{q['answer']}**")
-
-st.divider()
-
-# =========================================================
-# FOOTER
-# =========================================================
-st.caption("Py — Making Python simple, one step at a time. 🐍")
+st.caption("Built for the AI Learning Buddy Capstone Project • Topic: Python Basics")
