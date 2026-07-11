@@ -1,123 +1,190 @@
 import streamlit as st
 import google.generativeai as genai
+import json
+import re
 
-# =========================================================
-# STEP 1: Configure Gemini API
-# Get your key free from: https://aistudio.google.com/apikey
-# =========================================================
-GEMINI_API_KEY = ""   # <-- put your key here only
+# -------------------------------
+# Configure Gemini API securely
+# -------------------------------
 
-genai.configure(api_key=GEMINI_API_KEY)
+try:
+    api_key = st.secrets["GOOGLE_API_KEY"]
+except Exception:
+    st.error("""
+❌ GOOGLE_API_KEY not found.
+
+If running locally:
+Create `.streamlit/secrets.toml`
+
+If running on Streamlit Cloud:
+Manage App → Settings → Secrets
+""")
+    st.stop()
+
+genai.configure(api_key=api_key)
+
 model = genai.GenerativeModel("gemini-2.5-flash")
-
-# =========================================================
-# PAGE CONFIG + BLUE-BLACK THEME
-# =========================================================
 st.set_page_config(page_title="Py - AI Learning Buddy", page_icon="🐍", layout="centered")
 
+# ---------- Custom Styling ----------
 st.markdown("""
-    <style>
-    .stApp { background-color: #0d1b2a; }
-    h1, h2, h3, label, p { color: #e0e6ed !important; }
-    .stButton>button {
-        background-color: #1b98e0;
-        color: white;
-        border-radius: 8px;
-        font-weight: bold;
-    }
-    .stTextInput>div>div>input {
-        background-color: #1b263b;
-        color: white;
-    }
-    </style>
+<style>
+.stButton>button {
+    border-radius: 10px;
+    font-weight: 600;
+}
+.correct-box {
+    background-color: #d4edda;
+    padding: 12px;
+    border-radius: 8px;
+    color: #155724;
+    font-weight: 600;
+}
+.wrong-box {
+    background-color: #f8d7da;
+    padding: 12px;
+    border-radius: 8px;
+    color: #721c24;
+    font-weight: 600;
+}
+</style>
 """, unsafe_allow_html=True)
 
-# =========================================================
-# HEADER
-# =========================================================
-st.title("🐍 Py — Your Python Basics Learning Buddy")
-st.caption("AI Learning Buddy Capstone Project")
+# ---------- Sidebar ----------
+with st.sidebar:
+    st.header("🐍 Meet Py")
+    st.write("Your friendly, patient Python tutor who explains concepts with simple analogies and real-life examples.")
+    st.markdown("---")
+    st.caption("Built by Hemadharshini M | AI EMPOW(H)ER Program")
 
-with st.expander("👤 About Py (AI Persona)"):
-    st.write(
-        "You are Py, a friendly, patient, and encouraging Python programming "
-        "tutor who explains coding concepts in simple language with fun "
-        "real-life examples. You never make students feel bad for mistakes "
-        "and always motivate them to keep learning."
-    )
+st.title("🎓 AI Learning Buddy — Py")
+st.caption("A friendly AI tutor to help you master any topic, one concept at a time.")
 
-# =========================================================
-# TOPIC + ACTIVITY SELECTION
-# =========================================================
-topic = st.text_input("Enter a Python topic (e.g. variables, loops, lists):")
+# ---------- Session State ----------
+if "history" not in st.session_state:
+    st.session_state.history = []
+if "quiz_data" not in st.session_state:
+    st.session_state.quiz_data = None
+if "quiz_answers" not in st.session_state:
+    st.session_state.quiz_answers = {}
+if "quiz_submitted" not in st.session_state:
+    st.session_state.quiz_submitted = {}
+
+topic = st.text_input("📌 Enter a Topic", placeholder="e.g. Loops, Variables, Functions")
 
 option = st.selectbox(
-    "Choose Activity",
+    "🎯 Choose Activity",
     [
         "Explain Concept",
         "Real-Life Example",
         "Generate Quiz",
-        "Get Feedback on my Answer",
-        "Ask Anything",
-    ],
+        "Ask Anything"
+    ]
 )
 
-user_answer = ""
-question_text = ""
-if option == "Get Feedback on my Answer":
-    question_text = st.text_area("Paste the quiz question here:")
-    user_answer = st.text_input("Your answer:")
+def extract_json(text):
+    """Pull JSON block out of Gemini's response safely."""
+    match = re.search(r"\[.*\]", text, re.DOTALL)
+    if match:
+        return json.loads(match.group())
+    return json.loads(text)
 
-# =========================================================
-# PROMPT TEMPLATES (matches your 5 submitted templates)
-# =========================================================
-PERSONA = "You are Py, a friendly, patient, and encouraging Python tutor."
+generate_clicked = st.button("✨ Generate")
 
-def build_prompt(option, topic, question_text="", user_answer=""):
-    if option == "Explain Concept":
-        return (f"{PERSONA} Explain {topic} in simple language as if teaching "
-                 f"a 15-year-old student. Use easy words, one clear analogy, "
-                 f"and keep it short and engaging.")
-    elif option == "Real-Life Example":
-        return (f"{PERSONA} Give one clear real-life example of {topic} and "
-                 f"explain how it works in simple terms.")
-    elif option == "Generate Quiz":
-        return (f"{PERSONA} Create 5 multiple-choice questions on {topic}. "
-                 f"Each question should have 4 options (A, B, C, D). After "
-                 f"each question, provide the correct answer and a short "
-                 f"explanation.")
-    elif option == "Get Feedback on my Answer":
-        return (f"{PERSONA} The student answered \"{user_answer}\" for this "
-                 f"question: {question_text}. Give encouraging feedback. If "
-                 f"the answer is wrong, politely explain the correct answer.")
+if generate_clicked:
+    if topic == "":
+        st.warning("⚠️ Please enter a topic.")
     else:
-        return f"{PERSONA} {topic}"
-
-# =========================================================
-# GENERATE RESPONSE
-# =========================================================
-if st.button("Generate ✨"):
-    if topic == "" and option != "Get Feedback on my Answer":
-        st.warning("Please enter a topic first.")
-    else:
-        prompt = build_prompt(option, topic, question_text, user_answer)
-        with st.spinner("Py is thinking..."):
-            try:
+        with st.spinner("Py is thinking... 🤔"):
+            if option == "Explain Concept":
+                prompt = f"You are Py, a friendly Python tutor. Explain {topic} in simple language as if teaching a 15-year-old student. Use easy words, one clear analogy, and keep it short and engaging."
                 response = model.generate_content(prompt)
-                st.success("Here's what Py says:")
-                st.write(response.text)
-            except Exception as e:
-                st.error(f"Something went wrong: {e}")
+                st.session_state.history.append({"topic": topic, "activity": option, "response": response.text})
+                st.session_state.quiz_data = None
 
-# =========================================================
-# REFLECTION SECTION
-# =========================================================
-st.divider()
-st.header("💭 Reflection on AI Limitations")
-st.write(
-    "AI is a great learning aid, but it cannot fully verify understanding, "
-    "provide personalized mentorship, or replace human accountability. It "
-    "works best as a supplement to human teaching, not a replacement."
-)
+            elif option == "Real-Life Example":
+                prompt = f"You are Py, a friendly Python tutor. Give one clear real-life example of {topic} and explain how it works in simple terms."
+                response = model.generate_content(prompt)
+                st.session_state.history.append({"topic": topic, "activity": option, "response": response.text})
+                st.session_state.quiz_data = None
 
-st.caption("Built for the AI Learning Buddy Capstone Project • Topic: Python Basics")
+            elif option == "Generate Quiz":
+                prompt = f"""Create 5 multiple-choice questions on {topic} for a beginner.
+Return ONLY valid JSON, no extra text, in this exact format:
+[
+  {{"question": "...", "options": {{"A": "...", "B": "...", "C": "...", "D": "..."}}, "correct": "A", "explanation": "..."}}
+]"""
+                response = model.generate_content(prompt)
+                try:
+                    quiz = extract_json(response.text)
+                    st.session_state.quiz_data = quiz
+                    st.session_state.quiz_answers = {}
+                    st.session_state.quiz_submitted = {}
+                except Exception:
+                    st.error("Couldn't parse quiz. Please try generating again.")
+                    st.session_state.quiz_data = None
+
+            else:
+                prompt = topic
+                response = model.generate_content(prompt)
+                st.session_state.history.append({"topic": topic, "activity": option, "response": response.text})
+                st.session_state.quiz_data = None
+
+# ---------- Display Explanation / Example / Ask Anything ----------
+if st.session_state.history and option != "Generate Quiz":
+    latest = st.session_state.history[-1]
+    st.markdown("### 💬 Py says:")
+    st.write(latest["response"])
+    st.download_button(
+        label="⬇️ Download Response",
+        data=latest["response"],
+        file_name=f"{latest['topic']}_{latest['activity']}.txt",
+        mime="text/plain"
+    )
+
+# ---------- Interactive Quiz ----------
+if st.session_state.quiz_data:
+    st.markdown("## 📝 Quiz Time")
+    score = 0
+    total = len(st.session_state.quiz_data)
+
+    for i, q in enumerate(st.session_state.quiz_data):
+        st.markdown(f"**Q{i+1}. {q['question']}**")
+
+        selected = st.radio(
+            "Choose one:",
+            options=list(q["options"].keys()),
+            format_func=lambda x, q=q: f"{x}. {q['options'][x]}",
+            key=f"radio_{i}",
+            index=None
+        )
+
+        submit_col, result_col = st.columns([1, 3])
+        if submit_col.button("Submit", key=f"submit_{i}"):
+            st.session_state.quiz_submitted[i] = selected
+
+        if i in st.session_state.quiz_submitted and st.session_state.quiz_submitted[i]:
+            chosen = st.session_state.quiz_submitted[i]
+            if chosen == q["correct"]:
+                st.markdown(f'<div class="correct-box">✅ Correct! {q["explanation"]}</div>', unsafe_allow_html=True)
+            else:
+                st.markdown(f'<div class="wrong-box">❌ Wrong. Correct answer: {q["correct"]}. {q["explanation"]}</div>', unsafe_allow_html=True)
+
+        st.markdown("---")
+
+    # Score summary
+    correct_count = sum(
+        1 for i, q in enumerate(st.session_state.quiz_data)
+        if st.session_state.quiz_submitted.get(i) == q["correct"]
+    )
+    attempted = sum(1 for v in st.session_state.quiz_submitted.values() if v)
+    if attempted > 0:
+        st.info(f"📊 Score: {correct_count}/{attempted} attempted correctly")
+
+# ---------- History ----------
+if len(st.session_state.history) > 1:
+    with st.expander("📜 View Previous Conversations"):
+        for item in reversed(st.session_state.history[:-1]):
+            st.markdown(f"**Topic:** {item['topic']} | **Activity:** {item['activity']}")
+            st.write(item["response"])
+            st.markdown("---")
